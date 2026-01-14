@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>策略總覽</title>
+  <style>
+    body {
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: #0b1a2b;
+      color: #f4f7fb;
+      margin: 0;
+      min-height: 100vh;
+    }
+    .page {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 40px 24px 60px;
+    }
+    h1 {
+      margin-bottom: 8px;
+      font-size: 2.4rem;
+    }
+    p {
+      margin-top: 0;
+      color: #a0b0c4;
+    }
+    .grid {
+      display: grid;
+      gap: 16px;
+      margin-top: 32px;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    }
+    .card {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 14px;
+      padding: 20px 22px;
+      transition: border-color 0.2s ease, transform 0.2s ease;
+    }
+    .card:hover {
+      border-color: #40b3ff;
+      transform: translateY(-4px);
+    }
+    .card h2 {
+      margin: 0 0 8px;
+      font-size: 1.45rem;
+    }
+    .card p {
+      margin: 0;
+      color: #c2d0e4;
+    }
+    .card a {
+      display: inline-flex;
+      margin-top: 12px;
+      color: #40b3ff;
+      text-decoration: none;
+      font-weight: 500;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header>
+      <h1>交易策略總覽</h1>
+      <p>這裡整合正在開發或想要測試的量化策略，先從兩個專案開始：</p>
+    </header>
+
+    <div class="grid">
+      <article class="card">
+        <h2>Quant DCA Simulator</h2>
+        <p>股息、定期定額以及資產配置模擬，可直接打開現行的 HTML 檔案即時檢視。</p>
+        <a href="Quant DCA Simulator.html">打開 Quant DCA Simulator</a>
+      </article>
+
+      <article class="card">
+        <h2>輪動交易策略</h2>
+        <p>VOO/QQQ 自動輪動策略，按照 Rotation_plan.md 的框架分段加碼。</p>
+        <a href="Rotation Strategy.html">查看輪動策略</a>
+      </article>
+      <article class="card">
+        <h2>Quant DCA Portfolio Optimizer (V3.0)</h2>
+        <p>多資產組合優化與穩健度檢查，提供逐步探索與配置建議。</p>
+        <a href="Quant DCA Portfolio Optimizer (V3.0).html">開啟 Quant DCA Portfolio Optimizer</a>
+      </article>
+    </div>
+  </div>
+</body>
+</html>

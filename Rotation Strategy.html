@@ -1,0 +1,1200 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VOO/QQQ 策略即時回測模擬器</title>
+    <!-- 載入 Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* 設置字體為 Inter */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+        }
+
+        /* 固定表格標題 */
+        .sticky-header th {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+    </style>
+</head>
+
+<body class="p-4 md:p-8">
+
+    <div class="max-w-5xl mx-auto bg-white p-6 md:p-10 rounded-xl shadow-2xl">
+
+        <h1 class="text-3xl md:text-4xl font-extrabold text-teal-700 mb-2 border-b-4 border-teal-200 pb-2">
+            VOO/QQQ 動態輪動策略回測
+        </h1>
+        <p class="text-gray-600 mb-6">
+            <span class="font-bold text-teal-600">更新：</span>程式將根據您提供的日期與收盤價，自動計算所有技術指標（ATH, MA, RSI, MACD），執行回測。
+        </p>
+
+        <!-- 檔案上傳區塊 -->
+        <div class="bg-teal-50 p-6 rounded-xl border border-teal-200 mb-6">
+            <label for="data-upload" class="block text-xl font-semibold text-teal-800 mb-4 flex items-center">
+                <span class="mr-3 text-teal-500">&#9650;</span> 上傳統一歷史數據 (CSV)
+            </label>
+            <input type="file" id="data-upload" accept=".csv" class="w-full text-sm text-gray-500
+                file:mr-4 file:py-2 file:px-4
+                file:rounded-full file:border-0
+                file:text-sm file:font-semibold
+                file:bg-teal-100 file:text-teal-700
+                hover:file:bg-teal-200" />
+            <p id="upload-message" class="mt-3 text-sm text-yellow-500 font-medium"></p>
+        </div>
+
+        <!-- 參數設定與計算按鈕 -->
+        <div class="flex flex-col md:flex-row gap-4 items-end mb-6">
+            <div class="flex-1 w-full">
+                <label for="initial-cash" class="block text-sm font-medium text-gray-700 mb-1">初始投資金額 ($)</label>
+                <input type="number" id="initial-cash" value="100000"
+                    class="w-full p-2 border border-gray-300 rounded-lg focus:ring-teal-500 focus:border-teal-500">
+            </div>
+            <div class="flex-1 w-full">
+                <label for="max-qqq-ratio" class="block text-sm font-medium text-gray-700 mb-1">目標最大 QQQ 比例 (%)</label>
+                <input type="number" id="max-qqq-ratio" value="50" min="0" max="100"
+                    class="w-full p-2 border border-gray-300 rounded-lg focus:ring-teal-500 focus:border-teal-500">
+            </div>
+            <button id="calculate-btn"
+                class="w-full md:w-auto px-6 py-3 bg-teal-600 text-white font-bold rounded-xl shadow-lg hover:bg-teal-700 focus:outline-none focus:ring-4 focus:ring-teal-300 transition duration-150 transform hover:scale-[1.01]">
+                手動執行回測
+            </button>
+        </div>
+
+        <div class="grid gap-6 mb-8 lg:grid-cols-2">
+            <!-- 手動測試區 -->
+            <div class="bg-white shadow-inner border border-gray-200 rounded-2xl p-6 space-y-4">
+                <div class="flex items-center justify-between">
+                    <h3 class="text-lg font-semibold text-gray-800">手動測試參數</h3>
+                    <span id="stage-sum-status" class="text-xs text-red-500"></span>
+                </div>
+                <div class="grid gap-3 md:grid-cols-3">
+                    <label class="text-xs text-gray-500">
+                        Stage 1 (%)
+                        <input id="stage1-weight" type="number" value="25" min="10" max="90"
+                            class="mt-1 w-full border border-gray-300 rounded-lg px-2 py-1 text-sm">
+                    </label>
+                    <label class="text-xs text-gray-500">
+                        Stage 2 (%)
+                        <input id="stage2-weight" type="number" value="35" min="10" max="90"
+                            class="mt-1 w-full border border-gray-300 rounded-lg px-2 py-1 text-sm">
+                    </label>
+                    <label class="text-xs text-gray-500">
+                        Stage 3 (%)
+                        <input id="stage3-weight" type="number" value="40" min="10" max="90"
+                            class="mt-1 w-full border border-gray-300 rounded-lg px-2 py-1 text-sm">
+                    </label>
+                </div>
+                <div class="border-t border-dashed border-gray-300 pt-4 space-y-3 text-sm text-gray-600">
+                    <div>
+                        <p class="font-semibold text-gray-800">Stage 2 條件</p>
+                        <div class="grid gap-3 md:grid-cols-2 mt-2">
+                            <label class="text-xs text-gray-500">
+                                MA 週期 (5 ~ 20)
+                                <input id="stage2-ma-period" type="number" value="5" min="5" max="20"
+                                    class="mt-1 w-full border border-gray-300 rounded-lg px-2 py-1 text-sm">
+                            </label>
+                            <label class="flex items-center gap-2 text-xs text-gray-500">
+                                <input type="checkbox" id="stage2-require-entry" checked class="w-4 h-4">
+                                需突破 Stage 1 進場價
+                            </label>
+                        </div>
+                    </div>
+                    <div>
+                        <p class="font-semibold text-gray-800">Stage 3 條件</p>
+                        <div class="grid gap-3 md:grid-cols-2 mt-2 text-xs text-gray-500">
+                            <label>
+                                RSI 觸發門檻 (30 ~ 80)
+                                <input id="stage3-rsi-threshold" type="number" value="50" min="30" max="80"
+                                    class="mt-1 w-full border border-gray-300 rounded-lg px-2 py-1 text-sm">
+                            </label>
+                            <label>
+                                MA 週期 (20 ~ 120)
+                                <input id="stage3-ma-period" type="number" value="20" min="20" max="120"
+                                    class="mt-1 w-full border border-gray-300 rounded-lg px-2 py-1 text-sm">
+                            </label>
+                        </div>
+                        <div class="mt-2 flex flex-wrap gap-4">
+                            <label class="flex items-center gap-2 text-xs text-gray-500">
+                                <input type="checkbox" id="stage3-use-rsi" checked class="w-4 h-4">
+                                使用 RSI 條件
+                            </label>
+                            <label class="flex items-center gap-2 text-xs text-gray-500">
+                                <input type="checkbox" id="stage3-use-ma" checked class="w-4 h-4">
+                                使用 MA 條件
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- 優化區 -->
+            <div class="bg-white shadow-inner border border-gray-200 rounded-2xl p-6 space-y-4">
+                <div class="flex items-center justify-between">
+                    <h3 class="text-lg font-semibold text-gray-800">優化參數</h3>
+                    <span class="text-xs text-gray-500">50 ~ 1000 次隨機</span>
+                </div>
+                <div class="grid gap-3">
+                    <label class="text-xs text-gray-500">
+                        測試次數 (預設 50)
+                        <input id="optimization-count" type="number" value="50" min="50" max="1000"
+                            class="mt-1 w-full border border-gray-300 rounded-lg px-2 py-1 text-sm">
+                    </label>
+                    <div class="flex gap-3">
+                        <button id="run-optimization-btn"
+                            class="flex-1 px-4 py-2 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-300">
+                            執行自動優化
+                        </button>
+                        <button id="clear-optimization-btn"
+                            class="px-4 py-2 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-100 focus:outline-none">
+                            清除結果
+                        </button>
+                    </div>
+                    <div id="optimization-message" class="text-xs text-gray-600"></div>
+                    <div id="optimization-results" class="space-y-3"></div>
+                </div>
+            </div>
+        </div>
+
+        <section class="rounded-3xl border border-gray-200 bg-white/[0.7] p-5 shadow-inner mt-4 space-y-3">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-xs uppercase tracking-[0.3em] text-gray-500">Additional Safety</p>
+                    <h3 class="text-lg font-semibold text-gray-800">動態止盈選項</h3>
+                </div>
+                <label class="flex items-center gap-2 text-xs text-gray-500">
+                    <input type="checkbox" id="dynamic-exit-enabled" class="w-4 h-4">
+                    啟用動態止盈
+                </label>
+            </div>
+            <div class="grid gap-3 md:grid-cols-2 text-xs text-gray-600">
+                <label class="flex flex-col">
+                    <span class="text-gray-500">跌破成本時鎖定 (%)</span>
+                    <input id="dynamic-exit-margin" type="number" value="1" min="0.3" max="5" step="0.1"
+                        class="mt-1 w-full border border-gray-300 rounded-lg px-2 py-1 text-[0.75rem] text-gray-800">
+                </label>
+                <p class="text-[0.75rem] text-gray-500 leading-relaxed">
+                    若 QQQ 價格落入平均成本下方，系統將以成本*（1 - 鎖定%）進行全數賣出以保護獲利。
+                </p>
+            </div>
+        </section>
+
+        <!-- 策略邏輯說明區塊 -->
+        <div class="bg-gray-50 p-6 rounded-xl shadow-inner border border-gray-200 mb-8">
+            <h2 class="text-xl font-bold text-gray-800 mb-4 flex items-center">
+                <span class="mr-2 text-teal-500">&#9632;</span> 策略交易邏輯詳解 (VOO/QQQ 狀態機輪動)
+            </h2>
+            <div class="space-y-4 text-sm text-gray-600">
+                <p class="font-bold text-gray-700">【基礎與初始設定】</p>
+                <ul class="list-disc list-inside ml-4 space-y-1">
+                    <li><span class="font-semibold">核心資產 (防守):</span> VOO (S&P 500 ETF)。</li>
+                    <li><span class="font-semibold">動能資產 (攻擊):</span> QQQ (Nasdaq 100 ETF)。</li>
+                    <li><span class="font-semibold">初始操作:</span> 所有資金全部買入 VOO。</li>
+                    <li><span class="font-semibold">最大 QQQ 比例:</span> QQQ 持倉市值佔總資產的最高比例（由上方參數設定）。</li>
+                </ul>
+
+                <p class="font-bold text-gray-700 pt-2 border-t">【狀態機轉換與操作規則】</p>
+
+                <!-- 狀態 1 -->
+                <div class="bg-teal-100 p-3 rounded-lg border-l-4 border-teal-600">
+                    <p class="font-semibold text-teal-800">狀態 1: VOO 創新高 (牛市/風險規避)</p>
+                    <ul class="list-disc list-inside ml-4 mt-1 space-y-0.5">
+                        <li><span class="font-medium">進入條件:</span> VOO 價格持續創新高，或從狀態 2 轉換回來。</li>
+                        <li><span class="font-medium">操作原則:</span> VOO 滿倉。如果從狀態 2 轉換回來，賣出所有 QQQ，將所有現金全部轉入 VOO。</li>
+                        <li><span class="font-medium">退出條件:</span> VOO 收盤價跌破歷史最高價 (ATH)。<span
+                                class="font-semibold text-red-600"> → 轉換至 狀態 2</span></li>
+                    </ul>
+                </div>
+
+                <!-- 狀態 2 -->
+                <div class="bg-blue-100 p-3 rounded-lg border-l-4 border-blue-600">
+                    <p class="font-semibold text-blue-800">狀態 2: VOO 修正 (修正/尋找 QQQ 動能)</p>
+                    <ul class="list-disc list-inside ml-4 mt-1 space-y-0.5">
+                        <li><span class="font-medium">進入條件:</span> VOO 跌破 ATH。</li>
+                        <li><span class="font-medium">操作原則:</span> 根據 QQQ 動能指標分階段將 VOO 換倉為 QQQ，最高持倉不超過「最大 QQQ 比例」。</li>
+                        <li class="pl-2 pt-1">
+                            <span class="font-bold block">分階段建倉 QQQ (資金來源：現金或賣 VOO):</span>
+                            <ul class="list-disc list-inside ml-4 space-y-0.5">
+                                <li><span class="font-medium">階段 1 (25% 目標倉位):</span> QQQ MACD 柱狀體翻紅 (上穿 0 軸)。</li>
+                                <li><span class="font-medium">階段 2 (35% 目標倉位):</span> QQQ 價格突破 MA5 且高於階段 1 買入價。</li>
+                                <li><span class="font-medium">階段 3 (100% 目標倉位):</span> QQQ RSI > 50 **或** QQQ 價格突破 MA20。
+                                </li>
+                            </ul>
+                        </li>
+                        <li><span class="font-medium">退出條件:</span> VOO 再次達到或突破歷史最高價 (ATH)。<span
+                                class="font-semibold text-green-600"> → 轉換至 狀態 1</span></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        <!-- 結束 策略邏輯說明區塊 -->
+
+        <!-- 結果顯示區塊 -->
+        <div id="results" class="mt-8">
+            <!-- 分析結果將顯示在這裡 -->
+        </div>
+
+    </div>
+
+    <script>
+        let historicalData = []; // 儲存解析後的歷史數據
+        let qqqMovingAverages = {};
+        let dataLoaded = false;
+        const stageWeightIds = ['stage1-weight', 'stage2-weight', 'stage3-weight'];
+        let lastOptimizationResults = [];
+        // 僅需要這三個欄位作為輸入
+        const REQUIRED_HEADERS = ['DATE', 'VOO_CLOSE', 'QQQ_CLOSE'];
+
+        // --- 輔助函數 ---
+
+        function displayMessage(text, type = 'info', targetId = 'upload-message') {
+            const el = document.getElementById(targetId);
+            el.textContent = text;
+            const colors = {
+                'info': 'text-blue-500',
+                'error': 'text-red-500',
+                'success': 'text-green-500',
+            };
+            el.className = `mt-3 text-sm font-medium ${colors[type]}`;
+        }
+
+        function formatCurrency(number) {
+            return new Intl.NumberFormat('zh-TW', {
+                style: 'currency',
+                currency: 'USD',
+                minimumFractionDigits: 2
+            }).format(number);
+        }
+
+        // --- 技術指標計算函數 ---
+
+        /**
+         * 計算簡單移動平均線 (SMA)
+         * @param {Array<number>} prices - 股價陣列
+         * @param {number} period - 週期
+         * @returns {Array<number>} SMA 值陣列
+         */
+        function calculateSMA(prices, period) {
+            const sma = Array(prices.length).fill(null);
+            for (let i = period - 1; i < prices.length; i++) {
+                let sum = 0;
+                for (let j = 0; j < period; j++) {
+                    sum += prices[i - j];
+                }
+                sma[i] = sum / period;
+            }
+            return sma;
+        }
+
+        /**
+         * 計算指數移動平均線 (EMA)
+         * @param {Array<number>} prices - 股價陣列
+         * @param {number} period - 週期
+         * @param {number} startIndex - 開始計算的索引
+         * @param {number} initialAvg - 初始 SMA 平均值
+         * @returns {Array<number>} EMA 值陣列 (從 startIndex 開始計算)
+         */
+        function calculateEMA(prices, period, startIndex, initialAvg) {
+            const ema = Array(prices.length).fill(null);
+            const multiplier = 2 / (period + 1);
+
+            // 第一個 EMA 使用 SMA
+            let currentEMA = initialAvg;
+            if (currentEMA !== null) {
+                ema[startIndex - 1] = currentEMA;
+            } else {
+                // 如果沒有提供初始值，計算前 period 個 SMA 作為起點
+                let sum = 0;
+                for (let i = 0; i < period; i++) sum += prices[i];
+                currentEMA = sum / period;
+                ema[period - 1] = currentEMA;
+                startIndex = period;
+            }
+
+            for (let i = startIndex; i < prices.length; i++) {
+                currentEMA = (prices[i] * multiplier) + (currentEMA * (1 - multiplier));
+                ema[i] = currentEMA;
+            }
+            return ema;
+        }
+
+        /**
+         * 計算 MACD (12, 26, 9)
+         * @param {Array<number>} qqqCloses - QQQ 收盤價陣列
+         */
+        function calculateMACD(qqqCloses) {
+            const MACD_FAST_PERIOD = 12;
+            const MACD_SLOW_PERIOD = 26;
+            const MACD_SIGNAL_PERIOD = 9;
+            const startIdx = MACD_SLOW_PERIOD - 1; // 26-1 = 25
+
+            // 1. 計算 EMA 12 和 EMA 26 (需先計算前 12/26 日的 SMA)
+            const fastEMA = calculateEMA(qqqCloses, MACD_FAST_PERIOD, startIdx, null);
+            const slowEMA = calculateEMA(qqqCloses, MACD_SLOW_PERIOD, startIdx, null);
+
+            // 2. 計算 MACD Line
+            const macdLine = Array(qqqCloses.length).fill(null);
+            for (let i = startIdx; i < qqqCloses.length; i++) {
+                if (fastEMA[i] !== null && slowEMA[i] !== null) {
+                    macdLine[i] = fastEMA[i] - slowEMA[i];
+                }
+            }
+
+            // 3. 計算 Signal Line (MACD Line 的 9 日 EMA)
+            // 找出第一個非空值的 MACD Line 索引
+            let signalStartIdx = -1;
+            for (let i = 0; i < macdLine.length; i++) {
+                if (macdLine[i] !== null) {
+                    signalStartIdx = i;
+                    break;
+                }
+            }
+
+            const signalLine = Array(qqqCloses.length).fill(null);
+            if (signalStartIdx !== -1) {
+                // 需要一個臨時陣列來計算 MACD Line 的 SMA (前 9 日)
+                const macdSlice = macdLine.slice(signalStartIdx);
+                if (macdSlice.length >= MACD_SIGNAL_PERIOD) {
+                    let initialSignalSum = 0;
+                    for (let i = 0; i < MACD_SIGNAL_PERIOD; i++) {
+                        initialSignalSum += macdSlice[i];
+                    }
+                    const initialSignalAvg = initialSignalSum / MACD_SIGNAL_PERIOD;
+
+                    // 使用 MACD Line 進行 EMA 計算
+                    let currentSignalEMA = initialSignalAvg;
+                    const signalMultiplier = 2 / (MACD_SIGNAL_PERIOD + 1);
+
+                    // 填充前 Signal 週期
+                    for (let i = signalStartIdx + MACD_SIGNAL_PERIOD - 1; i < signalLine.length; i++) {
+                        if (macdLine[i] !== null) {
+                            if (i === signalStartIdx + MACD_SIGNAL_PERIOD - 1) {
+                                currentSignalEMA = initialSignalAvg;
+                            } else {
+                                currentSignalEMA = (macdLine[i] * signalMultiplier) + (currentSignalEMA * (1 - signalMultiplier));
+                            }
+                            signalLine[i] = currentSignalEMA;
+                        }
+                        const dynamicStopped = handleDynamicExit(todayData, portfolio, params, strategyState, tradeLog);
+                        if (dynamicStopped) continue;
+                    }
+                }
+            }
+
+            // 4. 計算 MACD Histogram
+            const macdHist = Array(qqqCloses.length).fill(null);
+            for (let i = 0; i < qqqCloses.length; i++) {
+                if (macdLine[i] !== null && signalLine[i] !== null) {
+                    macdHist[i] = macdLine[i] - signalLine[i];
+                }
+            }
+
+            return macdHist;
+        }
+
+        /**
+         * 計算 RSI (14)
+         * @param {Array<number>} qqqCloses - QQQ 收盤價陣列
+         */
+        function calculateRSI(qqqCloses) {
+            const RSI_PERIOD = 14;
+            const rsi = Array(qqqCloses.length).fill(null);
+            const changes = [];
+
+            for (let i = 1; i < qqqCloses.length; i++) {
+                changes.push(qqqCloses[i] - qqqCloses[i - 1]);
+            }
+
+            // 初始化前 14 日的平均 Gain/Loss
+            if (changes.length < RSI_PERIOD) return rsi;
+
+            let initialAvgGain = 0;
+            let initialAvgLoss = 0; // 記錄為正值
+
+            for (let i = 0; i < RSI_PERIOD; i++) {
+                if (changes[i] > 0) {
+                    initialAvgGain += changes[i];
+                } else {
+                    initialAvgLoss += Math.abs(changes[i]);
+                }
+            }
+
+            initialAvgGain /= RSI_PERIOD;
+            initialAvgLoss /= RSI_PERIOD;
+
+            let currentAvgGain = initialAvgGain;
+            let currentAvgLoss = initialAvgLoss;
+
+            // 從第 RSI_PERIOD 天 (索引 14) 開始計算 RSI
+            for (let i = RSI_PERIOD; i < qqqCloses.length; i++) {
+                const change = changes[i - 1]; // changes 陣列比 prices 陣列少一個元素
+                let gain = change > 0 ? change : 0;
+                let loss = change < 0 ? Math.abs(change) : 0;
+
+                // EMA 平滑公式: Avg = ((PrevAvg * (Period - 1)) + CurrentValue) / Period
+                currentAvgGain = ((currentAvgGain * (RSI_PERIOD - 1)) + gain) / RSI_PERIOD;
+                currentAvgLoss = ((currentAvgLoss * (RSI_PERIOD - 1)) + loss) / RSI_PERIOD;
+
+                let rs;
+                if (currentAvgLoss === 0) {
+                    rs = 9999; // 避免除以零，設定極大值
+                } else {
+                    rs = currentAvgGain / currentAvgLoss;
+                }
+
+                // RSI = 100 - (100 / (1 + RS))
+                rsi[i] = 100 - (100 / (1 + rs));
+            }
+
+            // 填充第一個 RSI 值 (索引 14)
+            if (qqqCloses.length >= RSI_PERIOD + 1) {
+                let rsInitial;
+                if (initialAvgLoss === 0) {
+                    rsInitial = 9999;
+                } else {
+                    rsInitial = initialAvgGain / initialAvgLoss;
+                }
+                rsi[RSI_PERIOD] = 100 - (100 / (1 + rsInitial));
+            }
+
+            return rsi;
+        }
+
+        /**
+         * 計算並將所有技術指標加入到歷史數據結構中
+         * @param {Array<Object>} data - 原始歷史數據
+         */
+        function calculateIndicators(data) {
+            if (data.length === 0) return data;
+
+            // 1. 準備股價陣列
+            const vooCloses = data.map(d => d.VOO.close);
+            const qqqCloses = data.map(d => d.QQQ.close);
+
+            // 2. VOO ATH
+            let maxClose = 0;
+            for (let i = 0; i < data.length; i++) {
+                maxClose = Math.max(maxClose, vooCloses[i]);
+                data[i].VOO.ath = maxClose;
+            }
+
+            // 3. QQQ MA5 和 MA20
+            const qqqMA5 = calculateSMA(qqqCloses, 5);
+            const qqqMA20 = calculateSMA(qqqCloses, 20);
+            const maStore = {};
+            for (let period = 5; period <= 120; period++) {
+                maStore[period] = calculateSMA(qqqCloses, period);
+            }
+            qqqMovingAverages = maStore;
+
+            // 4. QQQ RSI
+            const qqqRSI = calculateRSI(qqqCloses);
+
+            // 5. QQQ MACD
+            const qqqMACDHist = calculateMACD(qqqCloses);
+
+            // 6. 整合所有指標到 data 結構
+            for (let i = 0; i < data.length; i++) {
+                data[i].QQQ.ma5 = qqqMA5[i];
+                data[i].QQQ.ma20 = qqqMA20[i];
+                data[i].QQQ.rsi = qqqRSI[i];
+                data[i].QQQ.macd = {
+                    hist: qqqMACDHist[i],
+                    prevHist: i > 0 ? qqqMACDHist[i - 1] : null,
+                };
+            }
+
+            return data;
+        }
+
+        function getStageWeights() {
+            const stage1 = parseFloat(document.getElementById('stage1-weight').value) || 0;
+            const stage2 = parseFloat(document.getElementById('stage2-weight').value) || 0;
+            const stage3 = parseFloat(document.getElementById('stage3-weight').value) || 0;
+            return { stage1, stage2, stage3 };
+        }
+
+        function validateStageWeights() {
+            const { stage1, stage2, stage3 } = getStageWeights();
+            const withinRange = [stage1, stage2, stage3].every(value => value >= 10 && value <= 90);
+            const sum = stage1 + stage2 + stage3;
+            const sumValid = Math.abs(sum - 100) < 0.01;
+            const statusEl = document.getElementById('stage-sum-status');
+            let message = '';
+            if (!withinRange) {
+                message = '每階段倉位需介於 10～90%';
+            } else if (!sumValid) {
+                message = `Stage 1+2+3 必須合計 100% (目前 ${sum.toFixed(1)}%)`;
+            }
+            statusEl.textContent = message;
+            const disabled = !withinRange || !sumValid;
+            const calcBtn = document.getElementById('calculate-btn');
+            if (calcBtn) {
+                calcBtn.disabled = disabled || !dataLoaded;
+            }
+            return { valid: !disabled, weights: { stage1, stage2, stage3 } };
+        }
+
+        function getStrategyInputs() {
+            const stageResult = validateStageWeights();
+            if (!stageResult.valid) {
+                displayMessage('請先調整階段倉位使其符合 10~90% 且總和 100%。', 'error', 'results');
+                return null;
+            }
+            const initialCash = parseFloat(document.getElementById('initial-cash').value) || 100000;
+            const targetMaxQQQRatio = (parseFloat(document.getElementById('max-qqq-ratio').value) || 50) / 100;
+            const stage2MaPeriod = parseInt(document.getElementById('stage2-ma-period').value, 10) || 5;
+            const stage2RequireEntry = document.getElementById('stage2-require-entry').checked;
+            const stage3UseRsi = document.getElementById('stage3-use-rsi').checked;
+            const stage3UseMa = document.getElementById('stage3-use-ma').checked;
+            if (!stage3UseRsi && !stage3UseMa) {
+                displayMessage('Stage 3 至少需啟用 RSI 或 MA 條件。', 'error', 'results');
+                return null;
+            }
+            const stage3RsiThreshold = parseFloat(document.getElementById('stage3-rsi-threshold').value) || 50;
+            const stage3MaPeriod = parseInt(document.getElementById('stage3-ma-period').value, 10) || 20;
+            const dynamicExitEnabled = document.getElementById('dynamic-exit-enabled').checked;
+            const dynamicExitMargin = parseFloat(document.getElementById('dynamic-exit-margin').value) || 1;
+            return {
+                initialCash,
+                targetMaxQQQRatio,
+                stageWeights: stageResult.weights,
+                stage2MaPeriod,
+                stage2RequireEntry,
+                stage3UseRsi,
+                stage3UseMa,
+                stage3RsiThreshold,
+                stage3MaPeriod,
+                dynamicExitEnabled,
+                dynamicExitMargin
+            };
+        }
+
+
+        // --- 數據處理 ---
+
+        function parseCSV(csvText) {
+            const lines = csvText.trim().split('\n');
+            if (lines.length < 2) throw new Error('檔案內容不足。');
+
+            const header = lines[0].trim().split(',').map(h => h.trim().toUpperCase());
+            if (!REQUIRED_HEADERS.every(h => header.includes(h))) {
+                throw new Error(`CSV 格式不正確。僅需以下欄位: ${REQUIRED_HEADERS.join(', ')}`);
+            }
+
+            const headerIndices = REQUIRED_HEADERS.reduce((acc, h) => {
+                acc[h] = header.indexOf(h);
+                return acc;
+            }, {});
+
+            const rawData = [];
+            for (let i = 1; i < lines.length; i++) {
+                const values = lines[i].trim().split(',');
+                if (values.length < header.length) continue;
+
+                try {
+                    // 驗證並解析必要的數據
+                    const vooClose = parseFloat(values[headerIndices['VOO_CLOSE']]);
+                    const qqqClose = parseFloat(values[headerIndices['QQQ_CLOSE']]);
+
+                    if (isNaN(vooClose) || isNaN(qqqClose)) continue; // 跳過無效行
+
+                    rawData.push({
+                        day: i,
+                        date: values[headerIndices['DATE']].trim(),
+                        VOO: {
+                            close: vooClose,
+                            ath: 0, // 佔位符，待計算
+                        },
+                        QQQ: {
+                            close: qqqClose,
+                            ma5: null, // 佔位符，待計算
+                            ma20: null,
+                            rsi: null,
+                            macd: { hist: null, prevHist: null }
+                        }
+                    });
+                } catch (e) {
+                    console.warn(`跳過無效行 (數據解析錯誤): ${lines[i]}`, e);
+                }
+            }
+
+            // 確保數據是按時間順序 (雖然在計算指標前排序是關鍵)
+            rawData.sort((a, b) => new Date(a.date) - new Date(b.date));
+
+            // 呼叫指標計算
+            return calculateIndicators(rawData);
+        }
+
+        async function handleUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            displayMessage(`正在處理 ${file.name}...`, 'info');
+
+            try {
+                const content = await new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = (e) => resolve(e.target.result);
+                    reader.onerror = (e) => reject(e.target.error);
+                    reader.readAsText(file);
+                });
+
+                historicalData = parseCSV(content);
+
+                if (historicalData.length < 26) {
+                    // MACD 需要 26 天的數據才能開始計算
+                    throw new Error(`數據量不足 (${historicalData.length} 天)。至少需要 26 天的數據才能計算 MACD 等指標。`);
+                }
+
+                dataLoaded = true;
+                displayMessage(`載入成功！共 ${historicalData.length} 個交易日數據。`, 'success');
+                validateStageWeights();
+                document.getElementById('results').innerHTML = `<p class="text-center text-gray-500">數據已準備好，請點擊「執行完整回測」。</p>`;
+
+            } catch (error) {
+                historicalData = [];
+                dataLoaded = false;
+                validateStageWeights();
+                displayMessage(`錯誤: ${error.message}`, 'error');
+                document.getElementById('results').innerHTML = `<p class="text-center text-red-500">無法載入數據。請檢查 CSV 格式或數據量。</p>`;
+            }
+        }
+
+        // --- 核心策略執行 ---
+
+        /**
+         * 執行買賣操作並更新投資組合 (使用平均成本法)
+         * 新增 reason 參數以記錄操作依據
+         */
+        function executeTrade(portfolio, symbol, shares, price, type, dayData, log, reason = '') {
+            const stock = portfolio[symbol];
+            const transactionValue = shares * price;
+            const fee = 0; // 假設交易費為 0 或忽略，簡化模型
+
+            if (type === 'BUY') {
+                stock.costBasis += transactionValue + fee;
+                stock.shares += shares;
+                portfolio.cash -= (transactionValue + fee);
+                // 增加 reason 到 log
+                log.push({ day: dayData.day, date: dayData.date, msg: `[BUY ${symbol}] 買入 ${shares.toFixed(4)} 股 @ ${price.toFixed(2)}`, type: 'buy', reason: reason });
+            }
+            else if (type === 'SELL') {
+                if (shares > stock.shares + 0.0001) {
+                    // 如果賣出股數大於持股，只賣出所有持股
+                    shares = stock.shares;
+                }
+                if (shares <= 0) return;
+
+                const avgCostPerShare = stock.costBasis / stock.shares;
+                const costOfSharesSold = shares * avgCostPerShare;
+
+                const proceeds = transactionValue - fee;
+
+                // Realized P&L = Proceeds - Cost of Shares Sold
+                const realizedPNL = proceeds - costOfSharesSold;
+                stock.realizedPNL += realizedPNL;
+
+                // 更新持股和成本
+                stock.shares -= shares;
+                stock.costBasis -= costOfSharesSold;
+                portfolio.cash += proceeds;
+
+                // 總計 P&L
+                portfolio.totalRealizedPNL += realizedPNL;
+
+                // 清理浮點數誤差
+                if (stock.shares < 0.0001) {
+                    stock.shares = 0;
+                    stock.costBasis = 0;
+                }
+
+                // 增加 reason 到 log
+                log.push({ day: dayData.day, date: dayData.date, msg: `[SELL ${symbol}] 賣出 ${shares.toFixed(4)} 股 @ ${price.toFixed(2)} (已實現: ${realizedPNL.toFixed(2)})`, type: 'sell', reason: reason });
+            }
+
+            // 重新計算平均成本
+            stock.avgCost = stock.shares > 0 ? stock.costBasis / stock.shares : 0;
+        }
+
+        function simulateStrategy(params) {
+            const START_INDEX = 25;
+            if (historicalData.length <= START_INDEX) return null;
+
+            const {
+                initialCash,
+                targetMaxQQQRatio,
+                stageWeights,
+                stage2MaPeriod,
+                stage2RequireEntry,
+                stage3UseRsi,
+                stage3UseMa,
+                stage3RsiThreshold,
+                stage3MaPeriod,
+                dynamicExitEnabled,
+                dynamicExitMargin
+            } = params;
+
+            const stageRatios = {
+                stage1: stageWeights.stage1 / 100,
+                stage2: stageWeights.stage2 / 100,
+                stage3: stageWeights.stage3 / 100
+            };
+
+            const firstDay = historicalData[0];
+            const initialPrice = firstDay.VOO.close;
+            const initialVOOShares = Math.floor(initialCash / initialPrice);
+            const initialRemainingCash = initialCash - (initialVOOShares * initialPrice);
+
+            const portfolio = {
+                cash: initialRemainingCash,
+                voo: { shares: initialVOOShares, costBasis: initialVOOShares * initialPrice, realizedPNL: 0, avgCost: initialPrice },
+                qqq: { shares: 0, costBasis: 0, realizedPNL: 0, avgCost: 0 },
+                totalRealizedPNL: 0,
+            };
+
+            let strategyState = {
+                globalState: 1,
+                vooHighestClose: firstDay.VOO.ath,
+                stage1Filled: false,
+                stage2Filled: false,
+                stage3Filled: false,
+                entryPriceS1: 0,
+            };
+
+            const tradeLog = [];
+
+            for (let i = START_INDEX; i < historicalData.length; i++) {
+                const todayData = historicalData[i];
+                if (todayData.QQQ.macd.hist === null || todayData.QQQ.macd.prevHist === null || todayData.QQQ.rsi === null) continue;
+
+                const currentTotalEquity = portfolio.cash +
+                    (portfolio.voo.shares * todayData.VOO.close) +
+                    (portfolio.qqq.shares * todayData.QQQ.close);
+
+                if (strategyState.globalState === 1) {
+                    if (todayData.VOO.close > strategyState.vooHighestClose) {
+                        strategyState.vooHighestClose = todayData.VOO.close;
+                    } else if (todayData.VOO.close < strategyState.vooHighestClose) {
+                        strategyState.globalState = 2;
+                        if (portfolio.qqq.shares > 0) {
+                            executeTrade(portfolio, 'qqq', portfolio.qqq.shares, todayData.QQQ.close, 'SELL', todayData, tradeLog, '狀態轉換: VOO 跌破 ATH，退出 QQQ (轉入 State 2)');
+                        }
+                        strategyState.stage1Filled = false;
+                        strategyState.stage2Filled = false;
+                        strategyState.stage3Filled = false;
+                        strategyState.entryPriceS1 = 0;
+                    }
+                } else if (strategyState.globalState === 2) {
+                    if (todayData.VOO.close >= strategyState.vooHighestClose) {
+                        strategyState.globalState = 1;
+                        strategyState.vooHighestClose = todayData.VOO.close;
+                        if (portfolio.qqq.shares > 0) {
+                            executeTrade(portfolio, 'qqq', portfolio.qqq.shares, todayData.QQQ.close, 'SELL', todayData, tradeLog, '狀態轉換: VOO 創新高，退出 QQQ (轉入 State 1)');
+                        }
+                        if (portfolio.cash > 0) {
+                            const sharesToBuy = Math.floor(portfolio.cash / todayData.VOO.close);
+                            if (sharesToBuy > 0) {
+                                executeTrade(portfolio, 'voo', sharesToBuy, todayData.VOO.close, 'BUY', todayData, tradeLog, '狀態轉換: VOO 創新高，現金轉入 VOO (轉入 State 1)');
+                            }
+                        }
+                    } else {
+                        const maxQQQTargetValue = currentTotalEquity * targetMaxQQQRatio;
+                        const currentQQQValue = portfolio.qqq.shares * todayData.QQQ.close;
+                        const attemptBuyQQQ = (targetRatio, stageName, condition) => {
+                            const budgetForStage = maxQQQTargetValue * targetRatio;
+                            const valueAlreadyHeld = portfolio.qqq.shares * todayData.QQQ.close;
+                            const valueToBuy = Math.max(0, budgetForStage - valueAlreadyHeld);
+                            if (valueToBuy < 10) return false;
+                            let cashNeeded = valueToBuy;
+                            let cashAvailable = portfolio.cash;
+                            if (cashAvailable < cashNeeded) {
+                                const shortage = cashNeeded - cashAvailable;
+                                const vooToSellValue = shortage * 1.01;
+                                const vooSharesToSell = Math.ceil(vooToSellValue / todayData.VOO.close);
+                                if (vooSharesToSell > portfolio.voo.shares) {
+                                    return false;
+                                }
+                                executeTrade(portfolio, 'voo', vooSharesToSell, todayData.VOO.close, 'SELL', todayData, tradeLog, `資金不足，賣出 VOO 籌集現金 (${stageName} 階段)`);
+                                cashAvailable = portfolio.cash;
+                            }
+                            const qqqSharesToBuy = Math.floor(cashNeeded / todayData.QQQ.close);
+                            if (qqqSharesToBuy > 0) {
+                                executeTrade(portfolio, 'qqq', qqqSharesToBuy, todayData.QQQ.close, 'BUY', todayData, tradeLog, condition);
+                                return true;
+                            }
+                            return false;
+                        };
+                        if (!strategyState.stage1Filled) {
+                            const isMacdCrossUp = todayData.QQQ.macd.hist > 0 && todayData.QQQ.macd.prevHist < 0;
+                            if (isMacdCrossUp) {
+                                const reason = `QQQ Stage 1 (${stageWeights.stage1}%): MACD 柱狀體翻紅`;
+                                if (attemptBuyQQQ(stageRatios.stage1, 'Stage 1', reason)) {
+                                    strategyState.stage1Filled = true;
+                                    strategyState.entryPriceS1 = todayData.QQQ.close;
+                                }
+                            }
+                        } else if (strategyState.stage1Filled && !strategyState.stage2Filled) {
+                            const stage2MaArray = qqqMovingAverages[stage2MaPeriod] || [];
+                            const stage2MaValue = stage2MaArray[i] ?? null;
+                            const isAboveStage2Ma = stage2MaValue !== null && todayData.QQQ.close > stage2MaValue;
+                            const isAboveEntry = !stage2RequireEntry || todayData.QQQ.close > strategyState.entryPriceS1;
+                            if (isAboveStage2Ma && isAboveEntry) {
+                                const entrySuffix = stage2RequireEntry ? ' 且高於 Stage 1 進場價' : '';
+                                const reason = `QQQ Stage 2 (${stageWeights.stage2}%): 價格突破 MA${stage2MaPeriod}${entrySuffix}`;
+                                if (attemptBuyQQQ(stageRatios.stage2, 'Stage 2', reason)) {
+                                    strategyState.stage2Filled = true;
+                                }
+                            }
+                        } else if (strategyState.stage2Filled && !strategyState.stage3Filled) {
+                            const stage3MaArray = qqqMovingAverages[stage3MaPeriod] || [];
+                            const stage3MaValue = stage3MaArray[i] ?? null;
+                            const isRsiStrong = stage3UseRsi && todayData.QQQ.rsi !== null && todayData.QQQ.rsi > stage3RsiThreshold;
+                            const isAboveCustomMa = stage3UseMa && stage3MaValue !== null && todayData.QQQ.close > stage3MaValue;
+                            if (isRsiStrong || isAboveCustomMa) {
+                                const reasonParts = [];
+                                if (isRsiStrong) reasonParts.push(`RSI > ${stage3RsiThreshold}`);
+                                if (isAboveCustomMa) reasonParts.push(`突破 MA${stage3MaPeriod}`);
+                                const reason = `QQQ Stage 3 (${stageWeights.stage3}%): ${reasonParts.join(' 或 ')}`;
+                                if (attemptBuyQQQ(stageRatios.stage3, 'Stage 3', reason)) {
+                                    strategyState.stage3Filled = true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            const finalDay = historicalData[historicalData.length - 1];
+            const finalVOOPrice = finalDay.VOO.close;
+            const finalQQQPrice = finalDay.QQQ.close;
+            const finalEquity = portfolio.cash +
+                (portfolio.voo.shares * finalVOOPrice) +
+                (portfolio.qqq.shares * finalQQQPrice);
+            const totalReturn = (finalEquity - initialCash) / initialCash;
+
+            return {
+                initialCash,
+                finalEquity,
+                totalReturn,
+                portfolio,
+                tradeLog,
+                firstDate: historicalData[0].date,
+                lastDate: finalDay.date,
+                finalVOOPrice,
+                finalQQQPrice
+            };
+        }
+
+        function handleDynamicExit(todayData, portfolio, params, strategyState, tradeLog) {
+            if (!params.dynamicExitEnabled || portfolio.qqq.shares <= 0) return false;
+            const margin = Number.isFinite(params.dynamicExitMargin) ? params.dynamicExitMargin : 1;
+            const threshold = portfolio.qqq.avgCost * (1 - margin / 100);
+            if (todayData.QQQ.close <= threshold) {
+                const reason = `動態止盈: 價格跌破平均成本 ${margin.toFixed(1)}%`;
+                executeTrade(portfolio, 'qqq', portfolio.qqq.shares, todayData.QQQ.close, 'SELL', todayData, tradeLog, reason);
+                strategyState.stage1Filled = strategyState.stage2Filled = strategyState.stage3Filled = false;
+                strategyState.entryPriceS1 = 0;
+                return true;
+            }
+            return false;
+        }
+
+        function runFullSimulation() {
+            if (historicalData.length === 0) {
+                displayMessage('請先上傳 CSV 數據。', 'error', 'results');
+                return;
+            }
+            const params = getStrategyInputs();
+            if (!params) return;
+            const results = simulateStrategy(params);
+            if (!results) {
+                displayMessage('數據不足以執行回測。', 'error', 'results');
+                return;
+            }
+            renderFinalResults(results);
+        }
+
+        // --- 結果渲染 ---
+
+        function renderFinalResults(results) {
+            const resultsDiv = document.getElementById('results');
+            const p = results.portfolio;
+            const log = results.tradeLog;
+
+            // --- 修正: 從 results 物件中取出最終價格 ---
+            const finalVOOPrice = results.finalVOOPrice;
+            const finalQQQPrice = results.finalQQQPrice;
+            // ------------------------------------------
+
+            const getPNLColor = (pnl) => pnl >= 0 ? 'text-green-600' : 'text-red-600';
+            const getReturnColor = (ret) => ret >= 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700';
+
+            // 重建交易紀錄 HTML 為表格結構
+            const tradeLogTableBody = log.map(tx => `
+                <tr class="text-xs md:text-sm border-b ${tx.type === 'buy' ? 'bg-blue-50 hover:bg-blue-100' : 'bg-red-50 hover:bg-red-100'}">
+                    <td class="p-2">${tx.date}</td>
+                    <td class="p-2 font-semibold text-gray-800">${tx.msg}</td>
+                    <td class="p-2 text-xs text-gray-600 italic">${tx.reason}</td>
+                </tr>
+            `).join('');
+
+            const html = `
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+                    <!-- 總結 -->
+                    <div class="lg:col-span-1 bg-white p-6 rounded-xl shadow-lg border-t-8 border-teal-500">
+                        <h3 class="text-xl font-bold text-teal-800 mb-4">回測績效總結</h3>
+                        <div class="space-y-3">
+                            <div class="flex justify-between items-center text-gray-700">
+                                <span>起始日期:</span>
+                                <span class="font-mono font-bold">${results.firstDate}</span>
+                            </div>
+                            <div class="flex justify-between items-center text-gray-700">
+                                <span>結束日期:</span>
+                                <span class="font-mono font-bold">${results.lastDate}</span>
+                            </div>
+                            <div class="flex justify-between items-center text-2xl font-extrabold py-3 border-t border-b">
+                                <span class="text-gray-800">最終資產淨值:</span>
+                                <span class="text-teal-600">${formatCurrency(results.finalEquity)}</span>
+                            </div>
+                            <div class="flex justify-between items-center text-xl font-bold">
+                                <span class="text-gray-800">總報酬率:</span>
+                                <span class="px-3 py-1 rounded-lg ${getReturnColor(results.totalReturn)}">${(results.totalReturn * 100).toFixed(2)}%</span>
+                            </div>
+                            <div class="flex justify-between items-center text-gray-600 text-sm">
+                                <span>總已實現損益:</span>
+                                <span class="${getPNLColor(p.totalRealizedPNL)}">${formatCurrency(p.totalRealizedPNL)}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 最終持倉 -->
+                    <div class="lg:col-span-2 bg-white p-6 rounded-xl shadow-lg border-t-8 border-teal-500">
+                        <h3 class="text-xl font-bold text-teal-800 mb-4">最終投資組合 (Ending Portfolio)</h3>
+                        <div class="overflow-x-auto">
+                            <table class="min-w-full">
+                                <thead>
+                                    <tr class="text-left text-sm font-semibold text-gray-700 bg-gray-50">
+                                        <th class="p-3">標的</th>
+                                        <th class="p-3">股數</th>
+                                        <th class="p-3">平均成本</th>
+                                        <th class="p-3">最終市值</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td class="p-3 font-bold text-lg text-blue-700">VOO</td>
+                                        <td class="p-3">${p.voo.shares.toFixed(4)}</td>
+                                        <td class="p-3">${formatCurrency(p.voo.avgCost)}</td>
+                                        <td class="p-3">${formatCurrency(p.voo.shares * finalVOOPrice)}</td> <!-- 使用傳入的價格 -->
+                                    </tr>
+                                    <tr>
+                                        <td class="p-3 font-bold text-lg text-purple-700">QQQ</td>
+                                        <td class="p-3">${p.qqq.shares.toFixed(4)}</td>
+                                        <td class="p-3">${formatCurrency(p.qqq.avgCost)}</td>
+                                        <td class="p-3">${formatCurrency(p.qqq.shares * finalQQQPrice)}</td> <!-- 使用傳入的價格 -->
+                                    </tr>
+                                    <tr>
+                                        <td class="p-3 font-bold text-lg text-green-700">現金 (Cash)</td>
+                                        <td class="p-3" colspan="3">${formatCurrency(p.cash)}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 交易紀錄 -->
+                <div class="bg-white p-6 rounded-xl shadow-lg border-t-8 border-gray-300 mt-6">
+                    <h3 class="text-xl font-bold text-gray-800 mb-4">詳細交易紀錄 (共 ${log.length} 筆)</h3>
+                    <div class="max-h-96 overflow-y-auto border rounded-lg">
+                        <table class="min-w-full table-auto">
+                            <thead class="sticky-header">
+                                <tr class="text-left text-sm font-semibold text-gray-700 bg-gray-200">
+                                    <th class="p-2 w-[15%]">日期</th>
+                                    <th class="p-2 w-[35%]">交易詳情</th>
+                                    <th class="p-2 w-[50%]">操作依據 (策略條件)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${tradeLogTableBody}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+            resultsDiv.innerHTML = html;
+        }
+
+        function randomInt(min, max) {
+            return Math.floor(Math.random() * (max - min + 1)) + min;
+        }
+
+        function randomFloat(min, max) {
+            return Math.random() * (max - min) + min;
+        }
+
+        function randomStageWeights() {
+            for (let attempt = 0; attempt < 400; attempt++) {
+                const stage1 = randomInt(10, 90);
+                const stage2 = randomInt(10, 90);
+                const stage3 = 100 - stage1 - stage2;
+                if (stage3 >= 10 && stage3 <= 90) {
+                    return { stage1, stage2, stage3 };
+                }
+            }
+            return { stage1: 25, stage2: 35, stage3: 40 };
+        }
+
+        function renderOptimizationResults(items) {
+            const container = document.getElementById('optimization-results');
+            if (!container) return;
+            if (!items.length) {
+                container.innerHTML = `<p class="text-xs text-gray-500">尚未有優化結果。</p>`;
+                return;
+            }
+            container.innerHTML = items.map((entry, index) => {
+                const { params, result } = entry;
+                const returnPct = (result.totalReturn * 100).toFixed(2);
+                const targetRatio = (params.targetMaxQQQRatio * 100).toFixed(1);
+                const stageWeights = `${params.stageWeights.stage1}/${params.stageWeights.stage2}/${params.stageWeights.stage3}`;
+                const rsiText = params.stage3UseRsi ? `RSI > ${params.stage3RsiThreshold.toFixed(1)}` : '';
+                const maText = params.stage3UseMa ? `突破 MA${params.stage3MaPeriod}` : '';
+                const conditionText = [rsiText, maText].filter(Boolean).join(' 或 ');
+                const dynamicText = params.dynamicExitEnabled ? `動態止盈 ${params.dynamicExitMargin.toFixed(1)}%` : '無動態止盈';
+                return `
+                    <div class="rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-2 shadow-sm">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-xs text-gray-500">回報率</p>
+                                <p class="text-base font-semibold ${result.totalReturn >= 0 ? 'text-emerald-600' : 'text-red-500'}">${returnPct}%</p>
+                            </div>
+                            <button data-optimization-index="${index}" class="apply-optimization-btn text-xs px-3 py-1 rounded-full border border-blue-200 text-blue-600 hover:bg-blue-50">
+                                套用到手動
+                            </button>
+                        </div>
+                        <p class="text-[0.7rem] text-gray-500">Target QQQ: ${targetRatio}% / Stage Weights: ${stageWeights}</p>
+                        <p class="text-[0.7rem] text-gray-500">Stage2 MA${params.stage2MaPeriod}${params.stage2RequireEntry ? ' + 需高於 Stage1' : ''}</p>
+                        <p class="text-[0.7rem] text-gray-500">Stage3 (${conditionText || 'RSI/MA'})</p>
+                        <p class="text-[0.7rem] text-gray-500">${dynamicText}</p>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function applyOptimizationResult(index) {
+            const candidate = lastOptimizationResults[index];
+            if (!candidate) return;
+            const params = candidate.params;
+            document.getElementById('max-qqq-ratio').value = (params.targetMaxQQQRatio * 100).toFixed(1);
+            document.getElementById('stage1-weight').value = params.stageWeights.stage1;
+            document.getElementById('stage2-weight').value = params.stageWeights.stage2;
+            document.getElementById('stage3-weight').value = params.stageWeights.stage3;
+            document.getElementById('stage2-ma-period').value = params.stage2MaPeriod;
+            document.getElementById('stage2-require-entry').checked = params.stage2RequireEntry;
+            document.getElementById('stage3-rsi-threshold').value = params.stage3RsiThreshold.toFixed(1);
+            document.getElementById('stage3-ma-period').value = params.stage3MaPeriod;
+            document.getElementById('stage3-use-rsi').checked = params.stage3UseRsi;
+            document.getElementById('stage3-use-ma').checked = params.stage3UseMa;
+            document.getElementById('dynamic-exit-enabled').checked = params.dynamicExitEnabled;
+            document.getElementById('dynamic-exit-margin').value = params.dynamicExitMargin.toFixed(1);
+            validateStageWeights();
+            document.getElementById('optimization-message').textContent = '已將選定組合套用至手動設定，請重新執行回測。';
+        }
+
+        function clearOptimizationResults() {
+            const container = document.getElementById('optimization-results');
+            const messageEl = document.getElementById('optimization-message');
+            if (container) container.innerHTML = '';
+            if (messageEl) messageEl.textContent = '已清除優化結果';
+            lastOptimizationResults = [];
+        }
+
+        function runOptimization() {
+            if (historicalData.length === 0) {
+                const messageEl = document.getElementById('optimization-message');
+                if (messageEl) messageEl.textContent = '請先載入歷史數據後再執行優化。';
+                return;
+            }
+            const button = document.getElementById('run-optimization-btn');
+            const messageEl = document.getElementById('optimization-message');
+            const iterationsInput = parseInt(document.getElementById('optimization-count').value, 10);
+            const iterations = Math.min(Math.max(isNaN(iterationsInput) ? 50 : iterationsInput, 50), 1000);
+            const baseCash = parseFloat(document.getElementById('initial-cash').value) || 100000;
+            if (button) button.disabled = true;
+            if (messageEl) messageEl.textContent = `正在模擬 ${iterations} 組參數...`;
+            const candidates = [];
+            for (let i = 0; i < iterations; i++) {
+                const stageWeights = randomStageWeights();
+                    const params = {
+                        initialCash: baseCash,
+                        targetMaxQQQRatio: Math.min(Math.max(Math.random(), 0.01), 0.99),
+                        stageWeights,
+                        stage2MaPeriod: randomInt(5, 20),
+                        stage2RequireEntry: Math.random() < 0.65,
+                        stage3UseRsi: Math.random() < 0.85,
+                        stage3UseMa: Math.random() < 0.85,
+                        stage3RsiThreshold: randomFloat(30, 80),
+                        stage3MaPeriod: randomInt(20, 120),
+                        dynamicExitEnabled: Math.random() < 0.6,
+                        dynamicExitMargin: parseFloat(randomFloat(0.3, 2).toFixed(2))
+                    };
+                if (!params.stage3UseRsi && !params.stage3UseMa) {
+                    params.stage3UseRsi = true;
+                }
+                const result = simulateStrategy(params);
+                if (result) {
+                    candidates.push({ params, result });
+                }
+            }
+            candidates.sort((a, b) => b.result.totalReturn - a.result.totalReturn);
+            lastOptimizationResults = candidates.slice(0, 5);
+            renderOptimizationResults(lastOptimizationResults);
+            if (messageEl) {
+                if (!lastOptimizationResults.length) {
+                    messageEl.textContent = '未找到有效的優化差異。';
+                } else {
+                    messageEl.textContent = `完成 ${iterations} 次測試，前 ${lastOptimizationResults.length} 組回報率最高。`;
+                }
+            }
+            if (button) button.disabled = false;
+        }
+
+
+        // 頁面載入完成後初始化
+        window.onload = () => {
+            document.getElementById('data-upload').addEventListener('change', handleUpload);
+            document.getElementById('calculate-btn').addEventListener('click', runFullSimulation);
+            stageWeightIds.forEach((id) => {
+                const el = document.getElementById(id);
+                if (el) el.addEventListener('input', validateStageWeights);
+            });
+            const optimizationResults = document.getElementById('optimization-results');
+            if (optimizationResults) {
+                optimizationResults.addEventListener('click', (event) => {
+                    const button = event.target.closest('.apply-optimization-btn');
+                    if (button) {
+                        const index = parseInt(button.dataset.optimizationIndex, 10);
+                        if (!Number.isNaN(index)) {
+                            applyOptimizationResult(index);
+                        }
+                    }
+                });
+            }
+            const runOptBtn = document.getElementById('run-optimization-btn');
+            if (runOptBtn) runOptBtn.addEventListener('click', runOptimization);
+            const clearOptBtn = document.getElementById('clear-optimization-btn');
+            if (clearOptBtn) clearOptBtn.addEventListener('click', clearOptimizationResults);
+            validateStageWeights();
+            displayMessage('請上傳包含日期、VOO收盤價、QQQ收盤價的 CSV 檔案。', 'info');
+        }
+    </script>
+</body>
+
+</html>

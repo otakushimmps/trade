@@ -1,0 +1,790 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quant DCA 投資組合優化器 V3.0</title>
+    <!-- 載入 Tailwind CSS CDN (JIT 模式) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 載入 Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- 載入 Marked.js -->
+    <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/lib/marked.umd.min.js"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+                    },
+                    colors: {
+                        brand: {
+                            50: '#eef2ff',
+                            100: '#e0e7ff',
+                            500: '#6366f1',
+                            600: '#4f46e5',
+                            700: '#4338ca',
+                        },
+                        slate: {
+                            850: '#1e293b',
+                            900: '#0f172a',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            background-color: #f8fafc;
+        }
+
+        .file-input-wrapper input[type="file"] {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0;
+            cursor: pointer;
+            z-index: 10;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background-color: #cbd5e1;
+            border-radius: 3px;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        input[type="text"],
+        input[type="number"],
+        input[type="date"],
+        textarea,
+        select {
+            border: 1px solid #e2e8f0;
+            padding: 0.625rem 0.875rem;
+            border-radius: 0.5rem;
+            width: 100%;
+            transition: all 0.2s;
+            font-size: 0.875rem;
+            color: #1e293b;
+            background-color: #fff;
+        }
+
+        input:focus,
+        textarea:focus,
+        select:focus {
+            outline: none;
+            border-color: #6366f1;
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+        }
+
+        label {
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: #475569;
+            margin-bottom: 0.25rem;
+            display: block;
+        }
+
+        .prose h3 {
+            font-size: 1.1rem;
+            font-weight: 700;
+            margin-top: 1.5rem;
+            margin-bottom: 0.5rem;
+            color: #1e293b;
+        }
+
+        .prose ul {
+            list-style-type: disc;
+            padding-left: 1.25rem;
+            margin-top: 0.5rem;
+            color: #475569;
+        }
+
+        .optimization-params-col {
+            min-width: 120px;
+            font-family: monospace;
+            font-size: 0.75rem;
+        }
+    </style>
+</head>
+
+<body class="text-slate-800 antialiased p-4 sm:p-8">
+
+    <div class="max-w-7xl mx-auto">
+        <header
+            class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 border-b border-slate-200 pb-6">
+            <div>
+                <h1 class="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
+                    <div class="bg-brand-600 text-white p-1.5 rounded-lg">
+                        <i data-lucide="layers" class="w-6 h-6"></i>
+                    </div>
+                    Quant DCA Portfolio Optimizer
+                </h1>
+                <p class="text-slate-500 mt-2 text-sm">多標的投資組合優化系統 | V3.0 (Portfolio Edition)</p>
+            </div>
+            <div class="mt-4 sm:mt-0 flex gap-2">
+                <span
+                    class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-brand-50 text-brand-700 border border-brand-200">
+                    Step 1: Global Search
+                </span>
+                <span
+                    class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-green-50 text-green-700 border border-green-200">
+                    Step 2: Robustness Check
+                </span>
+            </div>
+        </header>
+
+        <main class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+
+            <!-- 左側配置欄 (4/12) -->
+            <div class="lg:col-span-4 space-y-6">
+
+                <!-- 1. 多標的數據源卡片 -->
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                    <div class="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+                        <h2 class="font-semibold text-slate-800 flex items-center gap-2">
+                            <i data-lucide="database" class="w-4 h-4 text-slate-500"></i>
+                            投資組合數據庫
+                        </h2>
+                        <span id="dataCountBadge"
+                            class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-200 text-slate-600">0 標的</span>
+                    </div>
+
+                    <div class="p-6 space-y-4">
+                        <div class="relative group">
+                            <div
+                                class="file-input-wrapper w-full h-32 border-2 border-dashed border-slate-300 rounded-lg flex flex-col items-center justify-center bg-slate-50 hover:bg-slate-100 hover:border-brand-500 transition-colors">
+                                <!-- 支援多選 multiple -->
+                                <input type="file" id="csvFile" accept=".csv" multiple>
+
+                                <div class="pointer-events-none flex flex-col items-center text-center p-4">
+                                    <div class="bg-white p-2 rounded-full shadow-sm mb-2">
+                                        <i data-lucide="folder-open" class="w-6 h-6 text-brand-600"></i>
+                                    </div>
+                                    <p class="text-sm font-medium text-slate-700">選擇多個 CSV 檔案</p>
+                                    <p class="text-xs text-slate-500 mt-1">例如: QQQ.csv, SPY.csv, SMH.csv</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 已載入檔案列表 -->
+                        <div class="bg-slate-50 rounded-lg p-3 max-h-32 overflow-y-auto border border-slate-100">
+                            <p class="text-xs font-semibold text-slate-500 mb-2">已載入標的：</p>
+                            <ul id="fileList" class="text-xs text-slate-700 space-y-1">
+                                <li class="text-slate-400 italic">尚未載入檔案...</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 2. 優化參數設定 (Step 1) -->
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                    <div class="px-6 py-4 border-b border-slate-100 bg-brand-50/50">
+                        <h2 class="font-semibold text-brand-700 flex items-center gap-2">
+                            <i data-lucide="zap" class="w-4 h-4"></i>
+                            Step 1: 參數優化設定
+                        </h2>
+                    </div>
+
+                    <div class="p-6 space-y-4">
+                        <div>
+                            <label for="totalCapital">總投資本金 ($)</label>
+                            <input type="number" id="totalCapital" value="1000000">
+                            <p class="text-xs text-slate-400 mt-1">資金將平均分配給所有載入的標的</p>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label for="optRunCount">搜尋次數</label>
+                                <input type="number" id="optRunCount" value="100" min="10" max="1000">
+                            </div>
+                            <div>
+                                <label for="optNRange">分段 (N) 範圍</label>
+                                <input type="text" value="2-8" disabled
+                                    class="bg-slate-100 text-slate-500 cursor-not-allowed">
+                            </div>
+                        </div>
+
+                        <!-- 進度條 -->
+                        <div id="step1Progress" class="relative pt-1 hidden">
+                            <div class="overflow-hidden h-2 mb-1 text-xs flex rounded bg-brand-100">
+                                <div id="step1ProgressBar" style="width:0%"
+                                    class="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-brand-600 transition-all duration-300">
+                                </div>
+                            </div>
+                            <p id="step1ProgressText" class="text-xs text-brand-600 text-right">0%</p>
+                        </div>
+
+                        <button id="runStep1Btn" onclick="runStep1Optimization()"
+                            class="w-full bg-brand-600 hover:bg-brand-700 text-white font-bold py-3 px-4 rounded-lg shadow-lg transition-all duration-200 flex items-center justify-center gap-2 mt-2">
+                            <i data-lucide="play" class="w-5 h-5 fill-current"></i>
+                            執行全域優化 (Step 1)
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 3. 穩健性驗證設定 (Step 2) -->
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden opacity-50 pointer-events-none transition-opacity duration-300"
+                    id="step2Card">
+                    <div class="px-6 py-4 border-b border-slate-100 bg-green-50/50">
+                        <h2 class="font-semibold text-green-700 flex items-center gap-2">
+                            <i data-lucide="shield-check" class="w-4 h-4"></i>
+                            Step 2: 穩健性驗證
+                        </h2>
+                    </div>
+
+                    <div class="p-6 space-y-4">
+                        <div>
+                            <label for="validationCount">隨機區間測試次數 (每組參數)</label>
+                            <input type="number" id="validationCount" value="20" min="5" max="100">
+                        </div>
+                        <div>
+                            <label for="validationLength">隨機區間長度 (年)</label>
+                            <input type="number" id="validationLength" value="3" min="1" step="0.5">
+                        </div>
+
+                        <!-- 進度條 -->
+                        <div id="step2Progress" class="relative pt-1 hidden">
+                            <div class="overflow-hidden h-2 mb-1 text-xs flex rounded bg-green-100">
+                                <div id="step2ProgressBar" style="width:0%"
+                                    class="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-green-600 transition-all duration-300">
+                                </div>
+                            </div>
+                            <p id="step2ProgressText" class="text-xs text-green-600 text-right">0%</p>
+                        </div>
+
+                        <button id="runStep2Btn" onclick="runStep2Validation()"
+                            class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg shadow-lg transition-all duration-200 flex items-center justify-center gap-2 mt-2">
+                            <i data-lucide="check-circle-2" class="w-5 h-5 fill-current"></i>
+                            驗證 Top 10 參數 (Step 2)
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- 右側結果欄 (8/12) -->
+            <div class="lg:col-span-8 space-y-6">
+
+                <!-- 錯誤訊息 -->
+                <div id="errorMessage" class="hidden bg-red-50 border-l-4 border-red-500 p-4 rounded-r-lg mb-4">
+                    <div class="flex">
+                        <div class="flex-shrink-0"><i data-lucide="alert-circle" class="h-5 w-5 text-red-400"></i></div>
+                        <div class="ml-3">
+                            <p class="text-sm text-red-700" id="errorMessageText"></p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 1 結果: 投資組合總值排名 -->
+                <div
+                    class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col h-[400px]">
+                    <div
+                        class="px-6 py-4 border-b border-slate-100 flex-shrink-0 bg-brand-50/50 flex justify-between items-center">
+                        <h2 class="font-semibold text-brand-700 flex items-center gap-2">
+                            <i data-lucide="list" class="w-4 h-4"></i> Step 1 結果: 最佳參數 Top 10 (依總資產排序)
+                        </h2>
+                        <span class="text-xs text-slate-500">目標: 最大化組合總值</span>
+                    </div>
+                    <div class="flex-grow overflow-auto custom-scrollbar">
+                        <table class="min-w-full text-left border-collapse">
+                            <thead class="bg-slate-50 sticky top-0 z-10">
+                                <tr>
+                                    <th class="px-4 py-3 text-xs font-semibold text-slate-500 uppercase">排名</th>
+                                    <th class="px-4 py-3 text-xs font-semibold text-slate-500 uppercase">參數 (N / M)</th>
+                                    <th class="px-4 py-3 text-xs font-semibold text-slate-500 uppercase">跌幅設定</th>
+                                    <th class="px-4 py-3 text-xs font-semibold text-slate-500 uppercase">資金比例</th>
+                                    <th class="px-4 py-3 text-xs font-semibold text-slate-500 uppercase text-right">
+                                        組合總終值</th>
+                                    <th class="px-4 py-3 text-xs font-semibold text-slate-500 uppercase text-right">總報酬率
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody id="step1TableBody" class="divide-y divide-slate-100 bg-white">
+                                <tr>
+                                    <td colspan="6" class="px-6 py-10 text-center text-slate-400 text-sm">請執行 Step 1
+                                        優化...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Step 2 結果: 穩健性驗證 -->
+                <div
+                    class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col h-[400px]">
+                    <div
+                        class="px-6 py-4 border-b border-slate-100 flex-shrink-0 bg-green-50/50 flex justify-between items-center">
+                        <h2 class="font-semibold text-green-700 flex items-center gap-2">
+                            <i data-lucide="shield-check" class="w-4 h-4"></i> Step 2 結果: 隨機區間驗證 (依平均 CAGR 排序)
+                        </h2>
+                        <span class="text-xs text-slate-500">目標: 測試不同市場週期的穩定性</span>
+                    </div>
+                    <div class="flex-grow overflow-auto custom-scrollbar">
+                        <table class="min-w-full text-left border-collapse">
+                            <thead class="bg-slate-50 sticky top-0 z-10">
+                                <tr>
+                                    <th class="px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Step 1 排名</th>
+                                    <th class="px-4 py-3 text-xs font-semibold text-slate-500 uppercase">參數 (N / M)</th>
+                                    <th class="px-4 py-3 text-xs font-semibold text-slate-500 uppercase">跌幅設定</th>
+                                    <th class="px-4 py-3 text-xs font-semibold text-slate-500 uppercase text-right">平均
+                                        CAGR</th>
+                                    <th class="px-4 py-3 text-xs font-semibold text-slate-500 uppercase text-right">最低
+                                        CAGR</th>
+                                    <th class="px-4 py-3 text-xs font-semibold text-slate-500 uppercase text-right">最高
+                                        CAGR</th>
+                                </tr>
+                            </thead>
+                            <tbody id="step2TableBody" class="divide-y divide-slate-100 bg-white">
+                                <tr>
+                                    <td colspan="6" class="px-6 py-10 text-center text-slate-400 text-sm">請先完成 Step
+                                        1，再執行 Step 2 驗證...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div>
+        </main>
+    </div>
+
+    <!-- Scripts -->
+    <script>
+        lucide.createIcons();
+
+        // 全域變數
+        let datasets = {}; // 儲存多個標的的數據: { 'QQQ': [...], 'SPY': [...] }
+        let top10Candidates = []; // 儲存 Step 1 的前 10 名參數
+        let isProcessing = false;
+
+        // --- 輔助函式 ---
+        function formatNumber(num, decimal = 0) {
+            if (isNaN(num)) return '--';
+            return num.toLocaleString('en-US', { minimumFractionDigits: decimal, maximumFractionDigits: decimal });
+        }
+        function formatPercent(num, decimal = 2) {
+            if (isNaN(num)) return '--';
+            return (num * 100).toLocaleString('en-US', { minimumFractionDigits: decimal, maximumFractionDigits: decimal });
+        }
+        function generateRandomInt(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
+        function generateRandomFloat(min, max, step) {
+            const range = max - min;
+            const steps = Math.floor(range / step);
+            const randomSteps = generateRandomInt(0, steps);
+            return parseFloat((min + randomSteps * step).toFixed(1));
+        }
+
+        function calculateCAGR(initial, final, days) {
+            if (initial <= 0 || final <= 0 || days <= 0) return 0;
+            const years = days / 365.25;
+            return Math.pow(final / initial, 1 / years) - 1;
+        }
+
+        // --- 核心隨機參數生成 ---
+        function generateRandomParams() {
+            // V3.0 規則: N (2-8), M (3-9), Drawdowns sorted, Ratios normalized
+            const N = generateRandomInt(2, 8);
+            const dynamicStopMultiplier = generateRandomFloat(3, 9, 0.1);
+
+            // 跌幅: 5-30%
+            let drawdowns = [];
+            const pool = Array.from({ length: 26 }, (_, i) => i + 5);
+            for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1));[pool[i], pool[j]] = [pool[j], pool[i]]; }
+            drawdowns = pool.slice(0, N).sort((a, b) => a - b);
+
+            // 資金比例
+            let ratios = [];
+            let sum = 0;
+            for (let i = 0; i < N; i++) {
+                const weight = Math.random() * 100;
+                ratios.push(weight);
+                sum += weight;
+            }
+            const normalizedRatios = ratios.map(r => Math.round((r / sum) * 100));
+            const finalSum = normalizedRatios.reduce((a, b) => a + b, 0);
+            if (finalSum !== 100 && N > 0) normalizedRatios[N - 1] += (100 - finalSum);
+
+            return { stageCount: N, dynamicStopMultiplier, drawdowns, ratios: normalizedRatios };
+        }
+
+        // --- CSV 解析 (單一檔案) ---
+        function parseCsvData(csvText) {
+            const data = [];
+            const lines = csvText.trim().split('\n').filter(line => line.trim() !== '');
+            if (lines.length <= 1) return data;
+
+            for (let i = 1; i < lines.length; i++) {
+                let cleanLine = lines[i].replace(/\r/g, '').trim();
+                if (!cleanLine) continue;
+                const lineWithoutQuotes = cleanLine.replace(/"/g, '');
+                const parts = lineWithoutQuotes.split(',');
+                if (parts.length >= 2) {
+                    const datePart = parts[0].split(' ')[0].trim();
+                    const price = parseFloat(parts[1].trim());
+                    if (datePart && !isNaN(price)) data.push({ Date: datePart, Close: price });
+                }
+            }
+            // 確保日期排序 (舊->新)
+            data.sort((a, b) => new Date(a.Date) - new Date(b.Date));
+            return data;
+        }
+
+        // --- 檔案處理 (多檔) ---
+        document.getElementById('csvFile').addEventListener('change', function (e) {
+            const files = e.target.files;
+            const fileListEl = document.getElementById('fileList');
+            const badge = document.getElementById('dataCountBadge');
+
+            if (files.length === 0) return;
+
+            datasets = {}; // 清空舊數據
+            fileListEl.innerHTML = '';
+
+            let loadedCount = 0;
+
+            Array.from(files).forEach(file => {
+                const reader = new FileReader();
+                reader.onload = function (event) {
+                    const parsedData = parseCsvData(event.target.result);
+                    if (parsedData.length > 10) {
+                        datasets[file.name] = parsedData;
+
+                        // Update UI List
+                        const li = document.createElement('li');
+                        li.className = "flex items-center text-slate-700";
+                        li.innerHTML = `<i data-lucide="file-check" class="w-3 h-3 mr-2 text-green-500"></i> ${file.name} (${parsedData.length} 筆)`;
+                        fileListEl.appendChild(li);
+                        lucide.createIcons();
+
+                        loadedCount++;
+                        badge.textContent = `${loadedCount} 標的`;
+
+                        // Enable Step 1 button if at least one file loaded
+                        if (loadedCount > 0) {
+                            document.getElementById('errorMessage').classList.add('hidden');
+                        }
+                    } else {
+                        displayError(`檔案 ${file.name} 數據不足或格式錯誤`);
+                    }
+                };
+                reader.readAsText(file);
+            });
+        });
+
+        // --- 回測核心 (Core Logic - No Time Logic) ---
+        function runSingleBacktest(initialCapital, drawdowns, ratios, dynamicStopMultiplier, priceData) {
+            if (!priceData || priceData.length < 2) return null;
+
+            const drawdownsPct = drawdowns.map(d => d / 100);
+            const ratiosPct = ratios.map(r => r / 100);
+            const stopMultiplierDecimal = dynamicStopMultiplier / 100;
+
+            let currentCycleCapital = initialCapital;
+
+            let portfolio = {
+                shares: 0.0, cash: 0.0, buyFlags: new Array(drawdowns.length).fill(true), investmentSum: 0.0,
+                OH: priceData[0].Close, NH: priceData[0].Close, isFullyInvested: false, hasBoughtInCycle: false,
+                minPriceInCycle: priceData[0].Close
+            };
+
+            portfolio.cash = currentCycleCapital;
+            let buyAmounts = ratiosPct.map(r => currentCycleCapital * r);
+
+            for (let i = 0; i < priceData.length; i++) {
+                const currentPrice = priceData[i].Close;
+
+                // 1. OH Update
+                if (!portfolio.hasBoughtInCycle && currentPrice > portfolio.OH) {
+                    portfolio.OH = currentPrice;
+                    portfolio.NH = currentPrice;
+                    portfolio.minPriceInCycle = currentPrice;
+                }
+
+                portfolio.minPriceInCycle = Math.min(portfolio.minPriceInCycle, currentPrice);
+
+                // 2. Buy Logic
+                if (!portfolio.isFullyInvested) {
+                    const currentDrawdown = (currentPrice / portfolio.OH) - 1;
+                    let dailyRemainingCash = portfolio.cash;
+                    let totalAmountToBuy = 0;
+
+                    for (let j = 0; j < drawdownsPct.length; j++) {
+                        if (currentDrawdown <= -drawdownsPct[j] && portfolio.buyFlags[j]) {
+                            let amount = buyAmounts[j];
+                            if (amount > dailyRemainingCash) amount = dailyRemainingCash;
+
+                            if (amount > 0) {
+                                totalAmountToBuy += amount;
+                                dailyRemainingCash -= amount;
+                                portfolio.buyFlags[j] = false;
+                            }
+                        }
+                    }
+
+                    if (totalAmountToBuy > 0) {
+                        const sharesBought = totalAmountToBuy / currentPrice;
+                        portfolio.shares += sharesBought;
+                        portfolio.cash -= totalAmountToBuy;
+                        portfolio.investmentSum += totalAmountToBuy;
+
+                        if (!portfolio.hasBoughtInCycle) portfolio.hasBoughtInCycle = true;
+
+                        if (portfolio.buyFlags.every(flag => !flag) || portfolio.cash < 1) portfolio.isFullyInvested = true;
+                    }
+                }
+
+                // 3. Sell Logic
+                if (portfolio.shares > 0) {
+                    if (currentPrice >= portfolio.OH) {
+                        if (currentPrice > portfolio.NH) portfolio.NH = currentPrice;
+
+                        const dynamicStopPct = (portfolio.NH / portfolio.OH) * stopMultiplierDecimal;
+                        // Limit dynamic stop to reasonable bounds (e.g. max 99%)
+                        const safeStopPct = Math.min(dynamicStopPct, 0.99);
+                        const triggerPrice = portfolio.NH * (1 - safeStopPct);
+
+                        if (currentPrice <= triggerPrice) {
+                            const sellProceeds = portfolio.shares * currentPrice;
+                            currentCycleCapital = portfolio.cash + sellProceeds;
+
+                            // Reset
+                            portfolio.shares = 0.0;
+                            portfolio.cash = currentCycleCapital;
+                            portfolio.investmentSum = 0.0;
+                            portfolio.isFullyInvested = false;
+                            portfolio.buyFlags = new Array(drawdowns.length).fill(true);
+                            portfolio.OH = currentPrice;
+                            portfolio.NH = currentPrice;
+                            portfolio.hasBoughtInCycle = false;
+                            portfolio.minPriceInCycle = currentPrice;
+
+                            buyAmounts = ratiosPct.map(r => currentCycleCapital * r);
+                        }
+                    }
+                }
+            }
+
+            const finalPrice = priceData[priceData.length - 1].Close;
+            const finalAssetValue = portfolio.shares * finalPrice + portfolio.cash;
+
+            return finalAssetValue;
+        }
+
+        // --- Step 1: Global Search ---
+        async function runStep1Optimization() {
+            const datasetKeys = Object.keys(datasets);
+            if (datasetKeys.length === 0) { displayError("請先上傳至少一個 CSV 檔案"); return; }
+            if (isProcessing) return;
+
+            const totalCapitalInput = parseFloat(document.getElementById('totalCapital').value);
+            const runCount = parseInt(document.getElementById('optRunCount').value);
+            const capitalPerAsset = totalCapitalInput / datasetKeys.length;
+
+            if (isNaN(totalCapitalInput) || totalCapitalInput <= 0) { displayError("總本金無效"); return; }
+
+            // UI Init
+            isProcessing = true;
+            document.getElementById('runStep1Btn').disabled = true;
+            document.getElementById('step1Progress').classList.remove('hidden');
+            const tbody = document.getElementById('step1TableBody');
+            tbody.innerHTML = '<tr><td colspan="6" class="px-6 py-10 text-center text-slate-400">正在進行全域優化...</td></tr>';
+
+            let allResults = [];
+
+            for (let i = 0; i < runCount; i++) {
+                const params = generateRandomParams();
+                let portfolioFinalValue = 0;
+                let assetDetails = [];
+
+                // 對每個標的運行回測
+                datasetKeys.forEach(key => {
+                    const finalVal = runSingleBacktest(
+                        capitalPerAsset,
+                        params.drawdowns,
+                        params.ratios,
+                        params.dynamicStopMultiplier,
+                        datasets[key]
+                    );
+                    portfolioFinalValue += finalVal;
+                });
+
+                allResults.push({
+                    params: params,
+                    finalValue: portfolioFinalValue,
+                    returnRate: (portfolioFinalValue - totalCapitalInput) / totalCapitalInput
+                });
+
+                // Update Progress
+                const pct = Math.round(((i + 1) / runCount) * 100);
+                document.getElementById('step1ProgressBar').style.width = `${pct}%`;
+                document.getElementById('step1ProgressText').textContent = `${pct}%`;
+
+                if (i % 5 === 0) await new Promise(r => setTimeout(r, 0)); // Yield to UI
+            }
+
+            // Sort by Final Value (Descending)
+            allResults.sort((a, b) => b.finalValue - a.finalValue);
+            top10Candidates = allResults.slice(0, 10); // Save for Step 2
+
+            // Render Results
+            renderStep1Results(top10Candidates);
+
+            // Enable Step 2
+            document.getElementById('step2Card').classList.remove('opacity-50', 'pointer-events-none');
+            document.getElementById('runStep1Btn').disabled = false;
+            isProcessing = false;
+        }
+
+        function renderStep1Results(results) {
+            const tbody = document.getElementById('step1TableBody');
+            tbody.innerHTML = '';
+
+            results.forEach((r, idx) => {
+                const row = document.createElement('tr');
+                row.className = "hover:bg-slate-50 border-b border-slate-100";
+
+                const returnClass = r.returnRate >= 0 ? 'text-green-600' : 'text-red-500';
+
+                row.innerHTML = `
+                    <td class="px-4 py-3 font-semibold text-slate-700">#${idx + 1}</td>
+                    <td class="px-4 py-3 text-slate-600 text-xs">N=${r.params.stageCount}, M=${r.params.dynamicStopMultiplier}%</td>
+                    <td class="px-4 py-3 text-slate-500 optimization-params-col">[${r.params.drawdowns.join(',')}]</td>
+                    <td class="px-4 py-3 text-slate-500 optimization-params-col">[${r.params.ratios.join(',')}]</td>
+                    <td class="px-4 py-3 text-right font-mono font-medium">$${formatNumber(r.finalValue, 0)}</td>
+                    <td class="px-4 py-3 text-right font-bold ${returnClass}">${formatPercent(r.returnRate)}</td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        // --- Step 2: Robustness Validation ---
+        async function runStep2Validation() {
+            if (top10Candidates.length === 0) return;
+            if (isProcessing) return;
+
+            const validationCount = parseInt(document.getElementById('validationCount').value);
+            const validationLengthYears = parseFloat(document.getElementById('validationLength').value);
+            const totalCapitalInput = parseFloat(document.getElementById('totalCapital').value);
+            const capitalPerAsset = totalCapitalInput / Object.keys(datasets).length;
+            const validationDays = Math.ceil(validationLengthYears * 365); // Approx days
+
+            isProcessing = true;
+            document.getElementById('runStep2Btn').disabled = true;
+            document.getElementById('step2Progress').classList.remove('hidden');
+            const tbody = document.getElementById('step2TableBody');
+            tbody.innerHTML = '<tr><td colspan="6" class="px-6 py-10 text-center text-slate-400">正在進行穩健性驗證 (Monte Carlo)...</td></tr>';
+
+            let validatedResults = [];
+
+            for (let i = 0; i < top10Candidates.length; i++) {
+                const candidate = top10Candidates[i];
+                let cagrSamples = [];
+
+                // For each candidate, run K random validations
+                for (let k = 0; k < validationCount; k++) {
+                    let totalStartValue = 0;
+                    let totalEndValue = 0;
+                    let validRun = true;
+
+                    // For each asset in portfolio
+                    for (const key of Object.keys(datasets)) {
+                        const data = datasets[key];
+                        if (data.length < validationDays) { validRun = false; break; }
+
+                        // Random start index
+                        const maxStart = data.length - validationDays;
+                        const startIdx = Math.floor(Math.random() * maxStart);
+                        const subData = data.slice(startIdx, startIdx + validationDays);
+
+                        // Run backtest on sub-period
+                        const endVal = runSingleBacktest(
+                            capitalPerAsset,
+                            candidate.params.drawdowns,
+                            candidate.params.ratios,
+                            candidate.params.dynamicStopMultiplier,
+                            subData
+                        );
+
+                        totalStartValue += capitalPerAsset;
+                        totalEndValue += endVal;
+                    }
+
+                    if (validRun) {
+                        const cagr = calculateCAGR(totalStartValue, totalEndValue, validationDays);
+                        cagrSamples.push(cagr);
+                    }
+                }
+
+                // Calculate Stats
+                const avgCAGR = cagrSamples.reduce((a, b) => a + b, 0) / cagrSamples.length;
+                const minCAGR = Math.min(...cagrSamples);
+                const maxCAGR = Math.max(...cagrSamples);
+
+                validatedResults.push({
+                    originalRank: i + 1,
+                    params: candidate.params,
+                    avgCAGR,
+                    minCAGR,
+                    maxCAGR
+                });
+
+                // Update Progress
+                const pct = Math.round(((i + 1) / top10Candidates.length) * 100);
+                document.getElementById('step2ProgressBar').style.width = `${pct}%`;
+                document.getElementById('step2ProgressText').textContent = `${pct}%`;
+
+                await new Promise(r => setTimeout(r, 0));
+            }
+
+            // Sort by Avg CAGR
+            validatedResults.sort((a, b) => b.avgCAGR - a.avgCAGR);
+            renderStep2Results(validatedResults);
+
+            isProcessing = false;
+            document.getElementById('runStep2Btn').disabled = false;
+        }
+
+        function renderStep2Results(results) {
+            const tbody = document.getElementById('step2TableBody');
+            tbody.innerHTML = '';
+
+            results.forEach((r) => {
+                const row = document.createElement('tr');
+                row.className = "hover:bg-slate-50 border-b border-slate-100";
+
+                row.innerHTML = `
+                    <td class="px-4 py-3 text-slate-500 text-center">#${r.originalRank}</td>
+                    <td class="px-4 py-3 text-slate-600 text-xs">N=${r.params.stageCount}, M=${r.params.dynamicStopMultiplier}%</td>
+                    <td class="px-4 py-3 text-slate-500 optimization-params-col">[${r.params.drawdowns.join(',')}]</td>
+                    <td class="px-4 py-3 text-right font-bold text-brand-600">${formatPercent(r.avgCAGR)}</td>
+                    <td class="px-4 py-3 text-right text-red-500 text-xs">${formatPercent(r.minCAGR)}</td>
+                    <td class="px-4 py-3 text-right text-green-600 text-xs">${formatPercent(r.maxCAGR)}</td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        function displayError(msg) {
+            const el = document.getElementById('errorMessage');
+            document.getElementById('errorMessageText').textContent = msg;
+            el.classList.remove('hidden');
+            setTimeout(() => el.classList.add('hidden'), 5000);
+        }
+
+    </script>
+</body>
+
+</html>
